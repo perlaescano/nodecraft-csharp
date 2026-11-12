@@ -1,0 +1,332 @@
+@page "/"
+@inject IJSRuntime JS
+@inject HttpClient Http
+
+<PageTitle>NodeCraft C# — C# Playground, Lessons & 2D Game Studio</PageTitle>
+
+<div class="app-shell">
+    <!-- Top Header Bar -->
+    <header class="top-bar">
+        <div class="brand">
+            <span class="logo-badge">C#</span>
+            <strong>NodeCraft C# Studio</strong>
+            <div class="mode-switcher">
+                <button class="mode-pill @(!_isScratchpadMode ? "active" : "")" @onclick="SwitchToGameLessonsMode">
+                    🎮 Lessons & Game Engine
+                </button>
+                <button class="mode-pill @(_isScratchpadMode ? "active" : "")" @onclick="SwitchToScratchpadMode">
+                    💻 C# Practice Scratchpad
+                </button>
+            </div>
+        </div>
+
+        <div class="toolbar-actions">
+            <button class="btn btn-run" @onclick="RunCode" disabled="@(!_isReady)" title="Compile & Run (Ctrl+Enter)">▶ Run Code</button>
+            <button class="btn btn-accent" @onclick="ToggleAssetLibrary" title="Browse built-in pixel sprites & retro sound effects">
+                🎨 Asset Library
+            </button>
+            <button class="btn btn-secondary" @onclick="ResetCurrentTemplate" title="Restore the starter code">↺ Reset</button>
+            <button class="btn btn-secondary" @onclick="DownloadCode">⬇ Save .cs</button>
+            <label class="btn btn-secondary" style="cursor:pointer;">
+                ⬆ Load .cs
+                <InputFile OnChange="UploadCode" accept=".cs,.txt" style="display:none;" />
+            </label>
+            <label class="btn btn-secondary" style="cursor:pointer;" title="Import any pure-managed .NET .dll library">
+                📦 Add .dll
+                <InputFile OnChange="UploadLibrary" accept=".dll" style="display:none;" />
+            </label>
+            <button class="btn btn-outline" @onclick="() => _showDisclaimer = !_showDisclaimer">⚖ Legal</button>
+        </div>
+    </header>
+
+    @if (_showDisclaimer)
+    {
+        <div class="disclaimer-banner">
+            <div>
+                <strong>Educational & Open-Source Disclaimer:</strong> NodeCraft C# Studio is a non-commercial, not-for-profit educational platform created solely to teach C# programming and 2D game development concepts to students.
+                <br />
+                <strong>Independent Project Notice:</strong> Its node-and-scene architecture is inspired by <a href="https://godotengine.org" target="_blank" rel="noopener">Godot Engine</a> (MIT License) so students can transfer skills to industry tools. NodeCraft C# Studio is an independent project and is <strong>not</strong> affiliated with, endorsed by, or sponsored by the Godot Foundation. "GODOT" is a trademark of the Godot Foundation.
+                <br />
+                <strong>Student Privacy:</strong> This application is statically hosted and runs 100% locally inside the user's web browser via WebAssembly[cite: 5]. No student code, personal information, or account data is transmitted to or stored on external servers (only standard, anonymous web-hosting traffic logs from GitHub Pages occur when loading the page)[cite: 5].
+            </div>
+            <button class="btn btn-outline" @onclick="() => _showDisclaimer = false">Close</button>
+        </div>
+    }
+
+    <!-- Built-in Asset Library Drawer (Sprites + Retro Sound Effects) -->
+    @if (_showAssetLibrary)
+    {
+        <div class="asset-drawer">
+            <div class="asset-drawer-header">
+                <div class="asset-tabs">
+                    <button class="asset-tab @(_assetTab == "sprites" ? "active" : "")" @onclick='() => SetAssetTab("sprites")'>
+                        👾 Pixel Sprites (Sprite2D)
+                    </button>
+                    <button class="asset-tab @(_assetTab == "sounds" ? "active" : "")" @onclick='() => SetAssetTab("sounds")'>
+                        🔊 Retro Sound Effects (Audio.Play)
+                    </button>
+                </div>
+                <span class="asset-tip">Click <strong>+ Insert into Code</strong> to add any asset right at your cursor!</span>
+                <button class="btn-small" @onclick="() => _showAssetLibrary = false">✕ Close</button>
+            </div>
+
+            @if (_assetTab == "sprites")
+            {
+                <div class="asset-grid">
+                    @foreach (var sprite in _builtInSprites)
+                    {
+                        <div class="asset-card">
+                            <canvas id="preview_@sprite.Id" width="48" height="48" class="sprite-preview-canvas"></canvas>
+                            <div class="asset-name">@sprite.Label</div>
+                            <code class="asset-code-tag">"@sprite.Id"</code>
+                            <button class="btn-insert" @onclick="() => InsertSnippetAtCursor(sprite.Snippet)">
+                                + Insert into Code
+                            </button>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="asset-grid">
+                    @foreach (var sfx in _builtInSounds)
+                    {
+                        <div class="asset-card">
+                            <div class="sound-icon">@sfx.Icon</div>
+                            <div class="asset-name">@sfx.Label</div>
+                            <code class="asset-code-tag">Audio.Play("@sfx.Id")</code>
+                            <div class="sound-card-btns">
+                                <button class="btn-small" @onclick="() => PreviewSound(sfx.Id)">▶ Play</button>
+                                <button class="btn-insert" @onclick="() => InsertSnippetAtCursor(sfx.Snippet)">+ Insert</button>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+
+    <!-- Main Workspace -->
+    <main class="workspace @(_isScratchpadMode ? "scratchpad-layout" : "game-layout")">
+        <!-- Column 1: Lessons (in Game Mode) OR C# Practice Templates & Snippets (in Scratchpad Mode) -->
+        @if (!_isScratchpadMode)
+        {
+            <section class="panel curriculum-panel">
+                <div class="track-tabs">
+                    <button class="track-tab @(_trackFilter == "all" ? "active" : "")" @onclick='() => SetTrackFilter("all")'>All (15)</button>
+                    <button class="track-tab @(_trackFilter == "csharp" ? "active" : "")" @onclick='() => SetTrackFilter("csharp")'>Part 1: C#</button>
+                    <button class="track-tab @(_trackFilter == "engine" ? "active" : "")" @onclick='() => SetTrackFilter("engine")'>Part 2: Games</button>
+                </div>
+
+                <div class="lesson-nav-row">
+                    <button class="btn-small" @onclick="PrevLesson" disabled="@(_selectedLesson == 0)">◀ Prev</button>
+                    <span class="lesson-counter">Lesson @(_selectedLesson + 1) of @_lessons.Count</span>
+                    <button class="btn-small" @onclick="NextLesson" disabled="@(_selectedLesson == _lessons.Count - 1)">Next ▶</button>
+                </div>
+
+                <select class="lesson-select" value="@_selectedLesson" @onchange="SelectLesson">
+                    @for (int i = 0; i < _lessons.Count; i++)
+                    {
+                        if (_trackFilter == "all" || _lessons[i].Track == _trackFilter)
+                        {
+                            <option value="@i">@_lessons[i].Title</option>
+                        }
+                    }
+                </select>
+
+                <div class="concepts-badge">
+                    <strong>Topics:</strong> @_lessons[_selectedLesson].Concepts
+                </div>
+
+                <div class="lesson-body">
+                    @((MarkupString)_lessons[_selectedLesson].Instructions)
+                </div>
+
+                <div class="challenge-box">
+                    <strong>🎯 Coding Challenge:</strong>
+                    <p>@((MarkupString)_lessons[_selectedLesson].Challenge)</p>
+                </div>
+
+                <details class="api-cheat-sheet">
+                    <summary><strong>📘 C# & Engine Cheat Sheet</strong></summary>
+                    <ul>
+                        <li><code>Console.WriteLine(x)</code> — Print to the Console below.</li>
+                        <li><code>new Sprite2D { Texture = "knight" }</code> — Built-in sprite.</li>
+                        <li><code>Audio.Play("coin")</code> — Play a retro sound effect.</li>
+                        <li><code>_Ready()</code> — Runs once when the scene starts.</li>
+                        <li><code>_Process(double delta)</code> — Runs ~60 times/sec.</li>
+                        <li><code>Input.IsActionPressed("ui_right")</code> — Arrows or WASD</li>
+                        <li><code>IsCollidingWith(otherNode)</code> — True if overlapping</li>
+                        <li><code>AddChild(node)</code> / <code>QueueFree()</code> — Spawn or delete</li>
+                    </ul>
+                </details>
+            </section>
+        }
+        else
+        {
+            <section class="panel curriculum-panel">
+                <h3>💻 C# Practice Scratchpad</h3>
+                <p class="scratchpad-intro">
+                    Practice pure C# coding without any game engine boilerplate! Pick a starter template below or write your own C# code and hit <strong>▶ Run Code</strong> to see the console output.
+                </p>
+
+                <label class="field-label">Choose a Practice Template:</label>
+                <select class="lesson-select" value="@_selectedScratchpad" @onchange="SelectScratchpadTemplate">
+                    @for (int i = 0; i < _scratchpadTemplates.Count; i++)
+                    {
+                        <option value="@i">@_scratchpadTemplates[i].Title</option>
+                    }
+                </select>
+
+                <div class="lesson-body">
+                    <p>@_scratchpadTemplates[_selectedScratchpad].Description</p>
+                </div>
+
+                <div class="snippet-toolbox">
+                    <strong>⚡ One-Click C# Building Blocks</strong>
+                    <p class="snippet-sub">Click any block to insert it into your editor:</p>
+                    <button class="snippet-btn" @onclick='() => InsertSnippetAtCursor("Console.WriteLine(\"Hello, World!\");\n")'>
+                        + Console.WriteLine(...)
+                    </button>
+                    <button class="snippet-btn" @onclick='() => InsertSnippetAtCursor("int score = 10;\n")'>
+                        + int variable
+                    </button>
+                    <button class="snippet-btn" @onclick='() => InsertSnippetAtCursor("if (score >= 10)\n{\n    Console.WriteLine(\"You win!\");\n}\n")'>
+                        + if (condition) { ... }
+                    </button>
+                    <button class="snippet-btn" @onclick='() => InsertSnippetAtCursor("for (int i = 1; i <= 5; i++)\n{\n    Console.WriteLine($\"Count: {i}\");\n}\n")'>
+                        + for loop (1 to 5)
+                    </button>
+                    <button class="snippet-btn" @onclick='() => InsertSnippetAtCursor("List<string> items = new() { \"Apple\", \"Banana\", \"Cherry\" };\nforeach (var item in items)\n{\n    Console.WriteLine(item);\n}\n")'>
+                        + List&lt;string&gt; + foreach
+                    </button>
+                    <button class="snippet-btn" @onclick='() => InsertSnippetAtCursor("Random rng = new Random();\nint roll = rng.Next(1, 7);\nConsole.WriteLine($\"Dice roll: {roll}\");\n")'>
+                        + Random dice roll
+                    </button>
+                </div>
+            </section>
+        }
+
+        <!-- Column 2: VS Code Dark+ Syntax-Highlighted C# Editor -->
+        <section class="panel editor-panel">
+            <div class="panel-header">
+                <div class="editor-tabs">
+                    <span class="vscode-tab active">
+                        <span class="csharp-icon">C#</span> @(_isScratchpadMode ? "Program.cs" : "MyGame.cs")
+                    </span>
+                </div>
+                <span class="status-pill @(_errors.Count == 0 ? "ok" : "err")">
+                    @(_errors.Count == 0 ? "● Ready (Ctrl+Enter to Run)" : $"● {_errors.Count} Error(s)")
+                </span>
+            </div>
+
+            <div class="vscode-editor-container">
+                <div id="lineNumbersGutter" class="line-numbers-gutter">1</div>
+                <div class="editor-scroll-area">
+                    <pre id="codeHighlightBackdrop" class="code-highlight-backdrop" aria-hidden="true"><code id="codeHighlightContent"></code></pre>
+                    <textarea id="codeEditorTextarea"
+                              class="code-editor-textarea"
+                              value="@_code"
+                              @oninput="OnCodeInput"
+                              spellcheck="false"
+                              autocomplete="off"
+                              autocorrect="off"
+                              autocapitalize="off"></textarea>
+                </div>
+            </div>
+
+            @if (!_isScratchpadMode)
+            {
+                <div class="console-box">
+                    <div class="console-header-row">
+                        <span class="console-title">Terminal / Console.WriteLine() & Compiler Output</span>
+                        <button class="btn-tiny" @onclick="ClearConsole">Clear</button>
+                    </div>
+                    @if (!_isReady)
+                    {
+                        <div class="console-info">Loading .NET 8 WebAssembly Compiler...</div>
+                    }
+                    else if (_errors.Count > 0)
+                    {
+                        @foreach (var err in _errors)
+                        {
+                            <div class="console-err">✖ @err</div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="console-ok">✔ Build succeeded!</div>
+                        @if (_consoleLogs.Count == 0)
+                        {
+                            <div class="console-muted">Use Console.WriteLine("Hello!"); in your code to print messages here, or click the Game View on the right to play.</div>
+                        }
+                        else
+                        {
+                            @foreach (var line in _consoleLogs)
+                            {
+                                <div class="console-log">&gt; @line</div>
+                            }
+                        }
+                    }
+                </div>
+            }
+        </section>
+
+        <!-- Column 3: Live 60 FPS Game Viewport (Game Mode) OR Large C# Console Output (Scratchpad Mode) -->
+        @if (!_isScratchpadMode)
+        {
+            <section class="panel viewport-panel">
+                <div class="panel-header">
+                    <span><strong>Live Game & Visual Viewport</strong> (500×500)</span>
+                    <button class="btn-small" @onclick="RunCode">↻ Restart Scene</button>
+                </div>
+                <div class="canvas-wrapper">
+                    <canvas id="gameCanvas" width="500" height="500" tabindex="0"></canvas>
+                </div>
+                <p class="hint-text">Click inside the game viewport first so it captures Arrow Keys, WASD, and Spacebar!</p>
+            </section>
+        }
+        else
+        {
+            <section class="panel scratchpad-console-panel">
+                <div class="panel-header">
+                    <span><strong>C# Console Output</strong></span>
+                    <div style="display:flex; gap:6px;">
+                        <button class="btn-small" @onclick="RunCode">▶ Run Again</button>
+                        <button class="btn-small" @onclick="ClearConsole">Clear Output</button>
+                    </div>
+                </div>
+
+                <div class="scratchpad-terminal">
+                    @if (!_isReady)
+                    {
+                        <div class="console-info">Loading .NET 8 WebAssembly Compiler...</div>
+                    }
+                    else if (_errors.Count > 0)
+                    {
+                        <div class="console-err" style="margin-bottom:8px;"><strong>Build Failed:</strong></div>
+                        @foreach (var err in _errors)
+                        {
+                            <div class="console-err">✖ @err</div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="console-ok" style="margin-bottom:8px;">✔ Program finished cleanly.</div>
+                        @if (_consoleLogs.Count == 0)
+                        {
+                            <div class="console-muted">(No output printed yet. Try adding Console.WriteLine("Hello!"); and click Run Code.)</div>
+                        }
+                        else
+                        {
+                            @foreach (var line in _consoleLogs)
+                            {
+                                <div class="scratchpad-log-line">@line</div>
+                            }
+                        }
+                    }
+                </div>
+            </section>
+        }
+    </main>
+</div>

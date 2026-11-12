@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Keep Webcil enabled so school firewalls (Securly, GoGuardian, Lightspeed) do not block .dll downloads -->
+    <WasmEnableWebcil>true</WasmEnableWebcil>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="8.0.11" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="8.0.11" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.12.0" />
+    <PackageReference Include="Basic.Reference.Assemblies.Net80" Version="1.8.12" />
+  </ItemGroup>
+
+  <!-- Copy compiled Engine PE DLL to wwwroot/engine-ref.dat so in-browser Roslyn can reference Node/Node2D/Sprite2D/Audio -->
+  <Target Name="CopyEngineReference" AfterTargets="Build">
+    <Copy SourceFiles="$(TargetDir)$(TargetName).dll"
+          DestinationFiles="$(ProjectDir)wwwroot/engine-ref.dat"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>
